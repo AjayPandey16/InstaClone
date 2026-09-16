@@ -27,7 +27,7 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-app.use(cors());
+app.use(cors({ origin: process.env.CLIENT_URL || true }));
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
 

@@ -1,7 +1,5 @@
 var mongoose = require("mongoose");
 
-mongoose.connect("mongodb://127.0.0.1:27017/instaClone");
-
 const likesSchema = new mongoose.Schema({
   userId: {
     type: String,
@@ -14,14 +12,22 @@ const likesSchema = new mongoose.Schema({
 })
 
 const postSchema = new mongoose.Schema({
-  caption: String,
-  image: String,
+  caption: { type: String, default: '', maxlength: 2_200, trim: true },
+  image: { type: String, required: true },
   likes: [likesSchema],
-  uploadedBy: String,
+  uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  comments: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    text: { type: String, required: true, maxlength: 300, trim: true },
+    date: { type: Date, default: Date.now },
+  }],
+  savedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   date: {
     type: Date,
     default: Date.now
   }
 });
+
+postSchema.index({ date: -1 });
 
 module.exports = mongoose.model("Post", postSchema);

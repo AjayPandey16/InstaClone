@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { HiDotsVertical } from "react-icons/hi";
-import { FaHeart, FaRegBookmark, FaRegComment, FaRegHeart } from "react-icons/fa6";
-import { FiSend } from "react-icons/fi";
-import { api_base_url } from '../helper';
+import { useEffect, useState } from 'react';
+import { HiDotsVertical } from 'react-icons/hi';
+import { FaHeart, FaRegBookmark, FaRegComment, FaRegHeart } from 'react-icons/fa6';
+import { FiSend } from 'react-icons/fi';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
+import { apiJson } from '../api';
+import { api_base_url } from '../helper';
 
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80';
 const DEFAULT_POST_IMAGE = 'https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=1200&q=80';
@@ -13,144 +14,65 @@ const Posts = () => {
   const navigate = useNavigate();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [commentOpen, setCommentOpen] = useState(null);
+  const [commentText, setCommentText] = useState('');
 
   const getPosts = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(api_base_url + "/getPosts", {
-        mode: "cors",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          token: localStorage.getItem("token"),
-        })
-      });
-
-      const response = await res.json();
-      if (response.success) {
-        setData(response.data || []);
-      } else {
-        toast.error(response.msg || 'Unable to load posts');
-      }
-    } catch (error) {
-      toast.error('Unable to load posts');
-    } finally {
-      setLoading(false);
-    }
+    try { setData((await apiJson('/getPosts', {})).data || []); }
+    catch (error) { toast.error(error.message); }
+    finally { setLoading(false); }
   };
 
   const toggleLike = async (id) => {
-    const previousData = data;
-    setData((prev) =>
-      prev.map((item) =>
-        item.post._id === id
-          ? {
-              ...item,
-              post: {
-                ...item.post,
-                isYouLiked: !item.post.isYouLiked,
-                likes: item.post.isYouLiked ? Math.max(0, item.post.likes - 1) : item.post.likes + 1,
-              },
-            }
-          : item
-      )
-    );
-
-    try {
-      const res = await fetch(api_base_url + "/toggleLike", {
-        mode: "cors",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          token: localStorage.getItem("token"),
-          postId: id
-        })
-      });
-
-      const response = await res.json();
-      if (!response.success) {
-        setData(previousData);
-        toast.error(response.msg || 'Like update failed');
-      }
-    } catch (error) {
-      setData(previousData);
-      toast.error('Like update failed');
-    }
+    setData((previous) => previous.map((item) => item.post._id === id ? { ...item, post: { ...item.post, isYouLiked: !item.post.isYouLiked, likes: item.post.likes + (item.post.isYouLiked ? -1 : 1) } } : item));
+    try { await apiJson('/toggleLike', { postId: id }); } catch (error) { toast.error(error.message); getPosts(); }
   };
 
-  useEffect(() => {
-    getPosts();
-  }, []);
+  const toggleSave = async (id) => {
+    setData((previous) => previous.map((item) => item.post._id === id ? { ...item, post: { ...item.post, isYouSaved: !item.post.isYouSaved } } : item));
+    try { await apiJson('/toggleSave', { postId: id }); } catch (error) { toast.error(error.message); getPosts(); }
+  };
 
-  return (
-    <>
-      <div className="Posts mt-5 w-full pb-15">
-        {loading ? (
-          <div className="text-center text-sm text-gray-400">Loading posts...</div>
-        ) : data.length === 0 ? (
-          <div className="text-center text-sm text-gray-400">No posts yet.</div>
-        ) : (
-          data.map((item, index) => {
-            const postImage = item.post.image ? `${api_base_url}/uploads/${item.post.image}` : DEFAULT_POST_IMAGE;
-            const avatar = DEFAULT_AVATAR;
+  const addComment = async (postId) => {
+    if (!commentText.trim()) return;
+    try {
+      await apiJson('/addComment', { postId, text: commentText });
+      setData((previous) => previous.map((item) => item.post._id === postId ? { ...item, post: { ...item.post, comments: item.post.comments + 1 } } : item));
+      setCommentText('');
+      setCommentOpen(null);
+    } catch (error) { toast.error(error.message); }
+  };
 
-            return (
-              <div key={item.post._id || index} className="post mx-auto mb-2 max-w-4xl border-b border-[#27272a] pb-4">
-                <div className="flex items-center justify-between px-2.5 sm:px-4">
-                  <div className="flex items-center gap-2.5">
-                    <img
-                      onClick={() => navigate(`/profile/${item.user._id}`)}
-                      className='h-10 w-10 cursor-pointer rounded-full object-cover'
-                      src={avatar}
-                      alt={item.user.username}
-                      onError={(e) => {
-                        e.currentTarget.src = DEFAULT_AVATAR;
-                      }}
-                    />
-                    <div>
-                      <p>{item.user.username}</p>
-                      <p className='-mt-1 text-[13px] text-[gray]'>Join In {new Date(item.user.date).toDateString()}</p>
-                    </div>
-                  </div>
+  useEffect(() => { getPosts(); }, []);
 
-                  <i className='cursor-pointer text-[20px]'><HiDotsVertical /></i>
-                </div>
+  if (loading) return <div className="py-12 text-center text-sm text-gray-400">Loading your feed...</div>;
+  if (data.length === 0) return <div className="mx-auto max-w-2xl px-4 py-12 text-center text-sm text-gray-400">Follow people or share your first post to fill your feed.</div>;
 
-                <img
-                  className='mt-4 h-auto w-full max-h-[70vh] object-cover'
-                  src={postImage}
-                  alt={item.post.caption || 'Post image'}
-                  onError={(e) => {
-                    e.currentTarget.src = DEFAULT_POST_IMAGE;
-                  }}
-                />
+  return <div className="Posts mt-5 w-full pb-15">
+    {data.map((item) => {
+      const postImage = item.post.image ? `${api_base_url}/uploads/${item.post.image}` : DEFAULT_POST_IMAGE;
+      const avatar = item.user.avatar || DEFAULT_AVATAR;
+      return <article key={item.post._id} className="post mx-auto mb-5 max-w-2xl overflow-hidden rounded-2xl border border-[#27272a] bg-[#0d0d0d] pb-4">
+        <div className="flex items-center justify-between px-4 py-3">
+          <button type="button" className="flex items-center gap-2.5 text-left" onClick={() => navigate(`/profile/${item.user._id}`)}>
+            <img className="h-10 w-10 rounded-full object-cover ring-1 ring-pink-500/70" src={avatar} alt={item.user.username} onError={(event) => { event.currentTarget.src = DEFAULT_AVATAR; }} />
+            <span><b className="block text-sm">{item.user.username}</b><small className="text-gray-500">{new Date(item.post.date).toLocaleDateString()}</small></span>
+          </button>
+          <HiDotsVertical className="text-xl text-gray-500" />
+        </div>
+        <img className="aspect-square w-full object-cover" src={postImage} alt={item.post.caption || 'Post image'} onError={(event) => { event.currentTarget.src = DEFAULT_POST_IMAGE; }} />
+        <div className="px-4">
+          <div className="mt-3 flex items-center justify-between text-xl">
+            <div className="flex items-center gap-4"><button type="button" aria-label="Like post" onClick={() => toggleLike(item.post._id)} className={item.post.isYouLiked ? 'text-pink-500' : ''}>{item.post.isYouLiked ? <FaHeart /> : <FaRegHeart />}</button><button type="button" aria-label="Comment on post" onClick={() => setCommentOpen(commentOpen === item.post._id ? null : item.post._id)}><FaRegComment /></button><button type="button" aria-label="Share post"><FiSend /></button></div>
+            <button type="button" aria-label="Save post" onClick={() => toggleSave(item.post._id)} className={item.post.isYouSaved ? 'text-yellow-400' : ''}><FaRegBookmark /></button>
+          </div>
+          <p className="my-2 text-sm font-medium">{item.post.likes} likes <span className="ml-2 text-gray-500">{item.post.comments} comments</span></p>
+          <p className="text-sm text-gray-300"><b className="text-white">{item.user.username}</b> {item.post.caption}</p>
+          {commentOpen === item.post._id && <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); addComment(item.post._id); }}><input value={commentText} onChange={(event) => setCommentText(event.target.value)} maxLength="300" placeholder="Add a comment..." className="min-w-0 flex-1 rounded-lg border border-[#27272a] bg-black px-3 py-2 text-sm outline-none" /><button type="submit" className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-black">Post</button></form>}
+        </div>
+      </article>;
+    })}
+  </div>;
+};
 
-                <div className='px-2.5 sm:px-4'>
-                  <div className="mt-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3.75">
-                      <i onClick={() => toggleLike(item.post._id)} className={`cursor-pointer text-[20px] ${item.post.isYouLiked === true ? "text-pink-600" : ""}`}>
-                        {item.post.isYouLiked === true ? <FaHeart /> : <FaRegHeart />}
-                      </i>
-                      <i className='cursor-pointer text-[20px]'><FaRegComment /></i>
-                      <i className='cursor-pointer text-[20px]'><FiSend /></i>
-                    </div>
-                    <i className='cursor-pointer text-[20px]'><FaRegBookmark /></i>
-                  </div>
-                  <p className='my-2 text-[14px] text-[gray]'>{item.post.likes} Likes</p>
-
-                  <p className='text-[14px] text-[gray]'><b className='text-white'>{item.user.username} </b> {item.post.caption}</p>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </>
-  )
-}
-
-export default Posts
+export default Posts;

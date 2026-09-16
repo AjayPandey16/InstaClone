@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import NavBar from '../components/NavBar';
 import BottomNav from '../components/BottomNav';
 import { api_base_url } from '../helper';
@@ -15,7 +15,7 @@ const Profile = () => {
   const [posts, setPosts] = useState([]);
   const [isYouFollowed, setIsYouFollowed] = useState(false);
 
-  const getUserDetails = async () => {
+  const getUserDetails = useCallback(async () => {
     try {
       const res = await fetch(api_base_url + "/getUserDetails", {
         mode: "cors",
@@ -36,12 +36,12 @@ const Profile = () => {
       } else {
         toast.error(data.msg);
       }
-    } catch (error) {
+    } catch {
       toast.error('Unable to get user details');
     }
-  };
+  }, [id]);
 
-  const getMyPosts = async () => {
+  const getMyPosts = useCallback(async () => {
     try {
       const res = await fetch(api_base_url + "/getMyPosts", {
         mode: "cors",
@@ -61,10 +61,10 @@ const Profile = () => {
       } else {
         toast.error(data.msg);
       }
-    } catch (error) {
+    } catch {
       toast.error('Unable to load posts');
     }
-  };
+  }, [id]);
 
   const toggleFollow = async () => {
     try {
@@ -87,15 +87,18 @@ const Profile = () => {
       } else {
         toast.error(data.msg);
       }
-    } catch (error) {
+    } catch {
       toast.error('Unable to update follow status');
     }
   };
 
   useEffect(() => {
-    getUserDetails();
-    getMyPosts();
-  }, [id]);
+    const loadProfile = async () => {
+      await Promise.all([getUserDetails(), getMyPosts()]);
+    };
+
+    loadProfile();
+  }, [getMyPosts, getUserDetails]);
 
   return (
     <>
@@ -127,7 +130,7 @@ const Profile = () => {
           posts.length > 0 ? posts.map((post, index) => {
             const postImage = post.image ? `${api_base_url}/uploads/${post.image}` : DEFAULT_POST_IMAGE;
             return (
-              <div key={post._id || index} className="post h-[100px] w-full sm:h-[140px] md:h-[180px]">
+              <div key={post._id || index} className="post h-25 w-full sm:h-35 md:h-45">
                 <img
                   className='h-full w-full object-cover'
                   src={postImage}

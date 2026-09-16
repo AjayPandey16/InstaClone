@@ -1,410 +1,227 @@
-var express = require('express');
-var router = express.Router();
-var userModel = require("../models/userModel");
-var bcrypt = require("bcryptjs");
-var jwt = require("jsonwebtoken");
-var postModel = require("../models/postModel");
-const multer = require('multer')
-var path = require("path");
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const path = require('path');
+const User = require('../models/userModel');
+const Post = require('../models/postModel');
+const Notification = require('../models/notificationModel');
+const Message = require('../models/messageModel');
+const Story = require('../models/storyModel');
+const { requireAuth, signToken } = require('../middleware/auth');
 
-const secret = "secret";
-
-/* GET home page. */
-router.get('/', function (req, res, next) {
-  res.render('index', { title: 'Express' });
-});
-
-router.post("/signUp", async (req, res) => {
-  try {
-
-    let { username, name, email, pwd } = req.body;
-    let emailCon = await userModel.findOne({ email: email });
-    if (emailCon) {
-      return res.json({
-        success: false,
-        msg: "Email already exists",
-      });
-    }
-    else {
-      bcrypt.genSalt(12, function (err, salt) {
-        bcrypt.hash(pwd, salt, async function (err, hash) {
-
-          let user = await userModel.create({
-            username: username,
-            name: name,
-            email: email,
-            password: hash,
-          });
-
-          return res.json({
-            success: true,
-            msg: "User created successfully",
-          });
-
-        });
-      });
-    }
-  } catch (error) {
-    return res.json({
-      success: false,
-      msg: error.message,
-    });
-  }
-});
-
-router.post("/login", async (req, res) => {
-  try {
-
-    let { email, pwd } = req.body;
-    let user = await userModel.findOne({ email: email });
-    if (!user) {
-      return res.json({
-        success: false,
-        msg: "User not found",
-      });
-    }
-
-    else {
-      bcrypt.compare(pwd, user.password, function (err, result) {
-        if (result) {
-
-          let token = jwt.sign({ email: user.email, userId: user._id }, secret);
-
-          return res.json({
-            success: true,
-            msg: "User logged in successfully",
-            token,
-            userId: user._id
-          });
-        }
-        else {
-          return res.json({
-            success: false,
-            msg: "Invalid password",
-          })
-        }
-      })
-
-    }
-
-  }
-  catch (error) {
-    return res.json({
-      success: false,
-      msg: error.message,
-    })
-  }
-});
+const router = express.Router();
 
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, './uploads')
+  destination: './uploads',
+  filename: (req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+    cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname).toLowerCase()}`);
   },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    let extName = path.extname(file.originalname);
-    cb(null, file.fieldname + '-' + uniqueSuffix + extName);
-  }
-})
-
-const upload = multer({ storage: storage })
-
-router.post('/createPost', upload.single('image'), async function (req, res) {
-  try {
-
-    let { token, caption } = req.body;
-    let decoded = jwt.verify(token, secret);
-    let user = await userModel.findById(decoded.userId);
-    if (!user) {
-      return res.json({
-        success: false,
-        msg: "User not found",
-      });
-    }
-
-    let post = await postModel.create({
-      caption: caption,
-      image: req.file.filename,
-      uploadedBy: decoded.userId,
-      likes: [],
-    });
-
-    return res.json({
-      success: true,
-      msg: "Post created successfully",
-      postId: post._id
-    });
-
-  } catch (error) {
-    return res.json({
-      success: false,
-      msg: error.message,
-    })
-  }
 });
 
-router.post("/toggleLike", async (req, res) => {
+const upload = multer({
+  storage,
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith('image/')),
+});
+
+const publicUser = (user, viewerId) => ({
+  _id: user._id,
+  username: user.username,
+  name: user.name,
+  bio: user.bio,
+  avatar: user.avatar,
+  date: user.date,
+  followers: user.followers?.length || 0,
+  isYouFollowed: user.followers?.some((follower) => follower.userId.toString() === viewerId.toString()) || false,
+});
+
+const sendError = (res, error) => res.status(400).json({ success: false, msg: error.message });
+
+router.get('/health', (req, res) => res.json({ success: true, service: 'instaclone-api' }));
+
+router.post('/signUp', async (req, res) => {
   try {
-
-    let { token, postId } = req.body;
-    let decoded = jwt.verify(token, secret);
-    let user = await userModel.findById(decoded.userId);
-    if (!user) {
-      return res.json({
-        success: false,
-        msg: "User not found",
-      });
+    const { username, name, email, pwd } = req.body;
+    if (!username || !name || !email || !pwd || pwd.length < 6) {
+      return res.status(400).json({ success: false, msg: 'Username, name, email and a 6 character password are required' });
     }
+    const existing = await User.findOne({ $or: [{ email: email.toLowerCase() }, { username: username.toLowerCase() }] });
+    if (existing) return res.status(409).json({ success: false, msg: 'Email or username already exists' });
+    const user = await User.create({ username, name, email, password: await bcrypt.hash(pwd, 12) });
+    return res.status(201).json({ success: true, msg: 'User created successfully', userId: user._id });
+  } catch (error) { return sendError(res, error); }
+});
 
-    let post = await postModel.findById(postId);
-    if (!post) {
-      return res.json({
-        success: false,
-        msg: "Post not found",
-      });
+router.post('/login', async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.body.email?.toLowerCase() });
+    if (!user || !(await bcrypt.compare(req.body.pwd || '', user.password))) {
+      return res.status(401).json({ success: false, msg: 'Invalid email or password' });
     }
+    return res.json({ success: true, msg: 'User logged in successfully', token: signToken(user._id.toString()), userId: user._id });
+  } catch (error) { return sendError(res, error); }
+});
 
-    if (post.likes.some(like => like.userId === decoded.userId)) {
-      post.likes.pull({ userId: decoded.userId });
-      await post.save();
-      return res.json({
-        success: true,
-        msg: "Post unliked successfully",
-        action: "dislike"
-      });
-    }
+router.post('/createPost', requireAuth, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, msg: 'An image is required' });
+    const post = await Post.create({ caption: req.body.caption || '', image: req.file.filename, uploadedBy: req.userId });
+    return res.status(201).json({ success: true, msg: 'Post created successfully', postId: post._id });
+  } catch (error) { return sendError(res, error); }
+});
+
+router.post('/createStory', requireAuth, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, msg: 'An image is required' });
+    const story = await Story.create({ userId: req.userId, image: req.file.filename, caption: req.body.caption || '', expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) });
+    return res.status(201).json({ success: true, storyId: story._id });
+  } catch (error) { return sendError(res, error); }
+});
+
+router.post('/getStories', requireAuth, async (req, res) => {
+  try {
+    const followedUsers = await User.find({ 'followers.userId': req.userId }).select('_id');
+    const followedIds = followedUsers.map((user) => user._id);
+    const stories = await Story.find({ userId: { $in: [req.userId, ...followedIds] }, expiresAt: { $gt: new Date() } }).sort({ date: -1 }).populate('userId', 'username avatar');
+    return res.json({ success: true, data: stories });
+  } catch (error) { return sendError(res, error); }
+});
+
+router.post('/getPosts', requireAuth, async (req, res) => {
+  try {
+    const followedUsers = await User.find({ 'followers.userId': req.userId }).select('_id');
+    const followedIds = followedUsers.map((user) => user._id);
+    const posts = await Post.find({ uploadedBy: { $in: [req.userId, ...followedIds] } }).sort({ date: -1 }).limit(50).populate('uploadedBy', 'username name avatar date followers');
+    const data = posts.filter((post) => post.uploadedBy).map((post) => ({
+      post: {
+        _id: post._id, caption: post.caption, likes: post.likes.length, comments: post.comments.length,
+        image: post.image, date: post.date, isYouLiked: post.likes.some((like) => like.userId.toString() === req.userId.toString()),
+        isYouSaved: post.savedBy.some((id) => id.toString() === req.userId.toString()),
+      },
+      user: publicUser(post.uploadedBy, req.userId),
+    }));
+    return res.json({ success: true, msg: 'Posts fetched successfully', data });
+  } catch (error) { return sendError(res, error); }
+});
+
+router.post('/toggleLike', requireAuth, async (req, res) => {
+  try {
+    const post = await Post.findById(req.body.postId);
+    if (!post) return res.status(404).json({ success: false, msg: 'Post not found' });
+    const existing = post.likes.find((like) => like.userId.toString() === req.userId.toString());
+    if (existing) post.likes.pull(existing._id);
     else {
-      post.likes.push({ userId: decoded.userId });
-      await post.save();
-      return res.json({
-        success: true,
-        msg: "Post liked successfully",
-        action: "like"
-      });
+      post.likes.push({ userId: req.userId });
+      if (post.uploadedBy.toString() !== req.userId.toString()) await Notification.create({ recipient: post.uploadedBy, actor: req.userId, type: 'like', post: post._id });
     }
-
-  } catch (error) {
-    console.log(error)
-    return res.json({
-      success: false,
-      msg: error.message,
-    })
-  }
+    await post.save();
+    return res.json({ success: true, action: existing ? 'dislike' : 'like', likes: post.likes.length });
+  } catch (error) { return sendError(res, error); }
 });
 
-router.post("/toggleFollow", async (req, res) => {
+router.post('/toggleSave', requireAuth, async (req, res) => {
   try {
+    const post = await Post.findById(req.body.postId);
+    if (!post) return res.status(404).json({ success: false, msg: 'Post not found' });
+    const saved = post.savedBy.some((id) => id.toString() === req.userId.toString());
+    if (saved) post.savedBy.pull(req.userId); else post.savedBy.push(req.userId);
+    await post.save();
+    return res.json({ success: true, action: saved ? 'unsaved' : 'saved' });
+  } catch (error) { return sendError(res, error); }
+});
 
-    let { token, userId } = req.body;
-    let decoded = jwt.verify(token, secret);
-    let user = await userModel.findById(decoded.userId);
-    if (!user) {
-      return res.json({
-        success: false,
-        msg: "User not found",
-      });
-    }
+router.post('/addComment', requireAuth, async (req, res) => {
+  try {
+    const text = req.body.text?.trim();
+    const post = await Post.findById(req.body.postId);
+    if (!post) return res.status(404).json({ success: false, msg: 'Post not found' });
+    if (!text || text.length > 300) return res.status(400).json({ success: false, msg: 'Comment must be 1 to 300 characters' });
+    post.comments.push({ userId: req.userId, text });
+    await post.save();
+    if (post.uploadedBy.toString() !== req.userId.toString()) await Notification.create({ recipient: post.uploadedBy, actor: req.userId, type: 'comment', post: post._id });
+    return res.json({ success: true, comment: post.comments[post.comments.length - 1] });
+  } catch (error) { return sendError(res, error); }
+});
 
-    if (userId === decoded.userId) {
-      return res.json({
-        success: false,
-        msg: "You can't follow yourself",
-      })
-    };
-
-    let otherUser = await userModel.findById(userId);
-    if (!otherUser) {
-      return res.json({
-        success: false,
-        msg: "User not found",
-      });
-    }
-
-    if (otherUser.followers.some(follower => follower.userId === decoded.userId)) {
-      otherUser.followers.pull({ userId: decoded.userId });
-      await otherUser.save();
-      return res.json({
-        success: true,
-        msg: "User unfollowed successfully",
-        action: "Unfollow"
-      })
-    }
+router.post('/toggleFollow', requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.body.userId);
+    if (!user) return res.status(404).json({ success: false, msg: 'User not found' });
+    if (user._id.toString() === req.userId.toString()) return res.status(400).json({ success: false, msg: "You can't follow yourself" });
+    const existing = user.followers.find((follower) => follower.userId.toString() === req.userId.toString());
+    if (existing) user.followers.pull(existing._id);
     else {
-      otherUser.followers.push({ userId: decoded.userId });
-      await otherUser.save();
-      return res.json({
-        success: true,
-        msg: "User followed successfully",
-        action: "Follow"
-      })
+      user.followers.push({ userId: req.userId });
+      await Notification.create({ recipient: user._id, actor: req.userId, type: 'follow' });
     }
-
-  } catch (error) {
-    return res.json({
-      success: false,
-      msg: error.message,
-    })
-  }
+    await user.save();
+    return res.json({ success: true, action: existing ? 'Unfollow' : 'Follow', followers: user.followers.length });
+  } catch (error) { return sendError(res, error); }
 });
 
-router.post("/getPosts", async (req, res) => {
+router.post('/getUsers', requireAuth, async (req, res) => {
   try {
-
-    let { token } = req.body;
-    let decoded = jwt.verify(token, secret);
-    let user = await userModel.findById(decoded.userId);
-    if (!user) {
-      return res.json({
-        success: false,
-        msg: "User not found",
-      });
-    }
-
-    let posts = await postModel.find({});
-    let fullData = [];
-    for (let post of posts) {
-      let postUser = await userModel.findById(post.uploadedBy);
-      if (postUser) {
-        fullData.push({
-          post: {
-            _id: post._id,
-            caption: post.caption,
-            likes: post.likes.length,
-            image: post.image,
-            date: post.date,
-            isYouLiked: post.likes.some(like => like.userId === decoded.userId),
-          },
-          user: {
-            _id: postUser._id,
-            username: postUser.username,
-            followers: postUser.followers.length,
-            date: postUser.date,
-            isYouFollowed: postUser.followers.some(follower => follower.userId === decoded.userId),
-          },
-        });
-      }
-    }
-
-    return res.json({
-      success: true,
-      msg: "Posts fetched successfully",
-      data: fullData,
-    })
-
-  } catch (error) {
-    return res.json({
-      success: false,
-      msg: error.message,
-    })
-  }
+    const users = await User.find({ _id: { $ne: req.userId } }).select('-password').sort({ username: 1 });
+    return res.json({ success: true, data: users });
+  } catch (error) { return sendError(res, error); }
 });
 
-router.post("/getUsers", async (req, res) => {
+router.post('/getUserDetails', requireAuth, async (req, res) => {
   try {
-    let { token } = req.body;
-    let decoded = jwt.verify(token, secret);
-    let user = await userModel.findById(decoded.userId);
-    if (!user) {
-      return res.json({
-        success: false,
-        msg: "User not found",
-      });
-    }
-
-    let users = await userModel.find({ _id: { $ne: decoded.userId } });
-    return res.json({
-      success: true,
-      msg: "Users fetched successfully",
-      data: users,
-    });
-  } catch (error) {
-    return res.json({
-      success: false,
-      msg: error.message,
-    });
-  }
+    const user = await User.findById(req.body.userId).select('-password');
+    if (!user) return res.status(404).json({ success: false, msg: 'User not found' });
+    const posts = await Post.find({ uploadedBy: user._id }).sort({ date: -1 });
+    return res.json({ success: true, data: { ...publicUser(user, req.userId), posts: posts.length, isThisYou: user._id.toString() === req.userId.toString() } });
+  } catch (error) { return sendError(res, error); }
 });
 
-router.post("/getUserDetails", async (req, res) => {
+router.post('/getMyPosts', requireAuth, async (req, res) => {
   try {
-
-    let { token, userId } = req.body;
-    let decoded = jwt.verify(token, secret);
-    let user = await userModel.findById(decoded.userId);
-    if (!user) {
-      return res.json({
-        success: false,
-        msg: "User not found",
-      });
-    }
-
-    let otherUser = await userModel.findById(userId);
-    if (!otherUser) {
-      return res.json({
-        success: false,
-        msg: "Other user not found !"
-      });
-    }
-
-    let posts = await postModel.find({ uploadedBy: userId });
-
-    return res.json({
-      success: true,
-      msg: "User details fetched successfully",
-      data: {
-        _id: otherUser._id,
-        username: otherUser.username,
-        followers: otherUser.followers.length,
-        date: otherUser.date,
-        isYouFollowed: otherUser.followers.some(follower => follower.userId === decoded.userId),
-        posts: posts.length,
-        isThisYou: userId === decoded.userId,
-      }
-    });
-
-  } catch (error) {
-    return res.json({
-      success: false,
-      msg: error.message,
-    })
-  }
+    const posts = await Post.find({ uploadedBy: req.body.userId }).sort({ date: -1 });
+    return res.json({ success: true, data: posts });
+  } catch (error) { return sendError(res, error); }
 });
 
-router.post("/getMyPosts", async (req, res) => {
+router.post('/updateProfile', requireAuth, async (req, res) => {
   try {
+    const user = await User.findByIdAndUpdate(req.userId, { $set: { name: req.body.name, bio: req.body.bio, avatar: req.body.avatar } }, { new: true, runValidators: true }).select('-password');
+    return res.json({ success: true, data: user });
+  } catch (error) { return sendError(res, error); }
+});
 
-    let { token, userId } = req.body;
-    let decoded = jwt.verify(token, secret);
-    let user = await userModel.findById(decoded.userId);
-    if (!user) {
-      return res.json({
-        success: false,
-        msg: "User not found",
-      });
-    };
+router.post('/getNotifications', requireAuth, async (req, res) => {
+  try {
+    const notifications = await Notification.find({ recipient: req.userId }).sort({ date: -1 }).limit(30).populate('actor', 'username avatar');
+    await Notification.updateMany({ recipient: req.userId, read: false }, { $set: { read: true } });
+    return res.json({ success: true, data: notifications });
+  } catch (error) { return sendError(res, error); }
+});
 
-    let otherUser = await userModel.findById(userId);
-    if (!otherUser) {
-      return res.json({
-        success: false,
-        msg: "Other user not found !"
-      });
-    };
+router.post('/getMessageUsers', requireAuth, async (req, res) => {
+  try {
+    const users = await User.find({ _id: { $ne: req.userId } }).select('username name avatar').sort({ username: 1 });
+    return res.json({ success: true, data: users });
+  } catch (error) { return sendError(res, error); }
+});
 
-    let posts = await postModel.find({ uploadedBy: otherUser._id });
+router.post('/getMessages', requireAuth, async (req, res) => {
+  try {
+    const messages = await Message.find({ $or: [{ sender: req.userId, recipient: req.body.userId }, { sender: req.body.userId, recipient: req.userId }] }).sort({ date: 1 }).limit(100).populate('sender', 'username');
+    await Message.updateMany({ sender: req.body.userId, recipient: req.userId, read: false }, { $set: { read: true } });
+    return res.json({ success: true, data: messages });
+  } catch (error) { return sendError(res, error); }
+});
 
-    return res.json({
-      success: true,
-      msg: "Posts fetched successfully",
-      data: posts,
-    });
-
-  } catch (error) {
-    return res.json({
-      success: false,
-      msg: error.message,
-    })
-  }
-})
+router.post('/sendMessage', requireAuth, async (req, res) => {
+  try {
+    const text = req.body.text?.trim();
+    const recipient = await User.findById(req.body.userId).select('_id');
+    if (!recipient) return res.status(404).json({ success: false, msg: 'User not found' });
+    if (!text || text.length > 1000) return res.status(400).json({ success: false, msg: 'Message must be 1 to 1000 characters' });
+    const message = await Message.create({ sender: req.userId, recipient: recipient._id, text });
+    return res.status(201).json({ success: true, data: message });
+  } catch (error) { return sendError(res, error); }
+});
 
 module.exports = router;

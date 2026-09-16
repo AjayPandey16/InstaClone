@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
-import logo from '../images/logo.png'
+import React, { useState } from 'react';
+import logo from '../images/logo.png';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { api_base_url } from '../helper';
+import { apiJson } from '../api';
 
 
 const Login = () => {
@@ -10,38 +10,30 @@ const Login = () => {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const navigate = useNavigate();
 
-  const submitForm = (e) => {
+  const submitForm = async (e) => {
     e.preventDefault();
-    fetch(api_base_url + "/login", {
-      mode: "cors",
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        email: email,
-        pwd: password
-      })
-    }).then(res => res.json()).then(data => {
-      if (data.success) {
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("userId", data.userId);
-        navigate("/");
-      }
-      else {
-        toast.error(data.msg)
-      }
-    })
+    try {
+      setIsSubmitting(true);
+      const data = await apiJson('/login', { email: email.trim(), pwd: password });
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('userId', data.userId);
+      navigate('/');
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
     <>
       <div className='con flex min-h-screen items-center justify-center flex-col bg-black px-4'>
-        <form onSubmit={submitForm} className='w-full max-w-[350px] flex flex-col items-center justify-center'>
-          <img className='w-[150px] object-cover' src={logo} alt='' />
+        <form onSubmit={submitForm} className='w-full max-w-87.5 flex flex-col items-center justify-center'>
+          <img className='w-37.5 object-cover' src={logo} alt='' />
 
 
           <div className='inputBox'>
@@ -55,7 +47,9 @@ const Login = () => {
           <p className='text-[14px] text-gray-100 self-start'> Don't have an account
             <Link to="/signUp" className='text-[#3797EF]'> Sign Up</Link></p>
 
-          <button className='btnNormal w-full mt-4' type='submit'> Login </button>
+          <button className='btnNormal mt-4 w-full disabled:cursor-not-allowed disabled:opacity-60' type='submit' disabled={isSubmitting}>
+            {isSubmitting ? 'Signing in...' : 'Login'}
+          </button>
         </form>
       </div>
     </>

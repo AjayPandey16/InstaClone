@@ -39,7 +39,7 @@ const Search = () => {
       } else {
         toast.error(data.msg || 'Unable to load users');
       }
-    } catch (error) {
+    } catch {
       toast.error('Unable to load users');
     } finally {
       setLoading(false);
@@ -110,7 +110,7 @@ const Search = () => {
           })
         );
       }
-    } catch (error) {
+    } catch {
       toast.error('Action failed');
       setUsers((prevUsers) =>
         prevUsers.map((user) => {
