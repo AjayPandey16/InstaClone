@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import NavBar from '../components/NavBar';
 import BottomNav from '../components/BottomNav';
-import { api_base_url } from '../helper';
+import { api_base_url, getAvatarForUser } from '../helper';
 import { toast } from 'react-toastify';
 import { useParams } from 'react-router-dom';
 
@@ -105,7 +105,7 @@ const Profile = () => {
       <NavBar />
       <div className="flex w-full items-center gap-3.75 px-2.5 sm:px-4">
         <img
-          src={DEFAULT_AVATAR}
+          src={getAvatarForUser(userDetails, DEFAULT_AVATAR)}
           alt={userDetails ? userDetails.username : 'Profile'}
           className='h-16 w-16 shrink-0 rounded-full object-cover border border-[#27272a]'
           onError={(e) => {

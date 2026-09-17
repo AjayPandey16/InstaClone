@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import BottomNav from '../components/BottomNav';
 import NavBar from '../components/NavBar';
-import { api_base_url } from '../helper';
+import { api_base_url, getAvatarForUser } from '../helper';
 
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80';
 
@@ -152,7 +152,7 @@ const Search = () => {
               <div key={user._id} className="flex items-center justify-between rounded-xl border border-[#27272a] bg-[#121212] p-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <img
-                    src={DEFAULT_AVATAR}
+                    src={getAvatarForUser(user, DEFAULT_AVATAR)}
                     onError={(e) => {
                       e.currentTarget.src = DEFAULT_AVATAR;
                     }}

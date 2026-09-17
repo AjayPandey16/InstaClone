@@ -5,7 +5,7 @@ import { FiSend } from 'react-icons/fi';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../api';
-import { api_base_url } from '../helper';
+import { api_base_url, getAvatarForUser } from '../helper';
 
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80';
 const DEFAULT_POST_IMAGE = 'https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=1200&q=80';
@@ -51,7 +51,7 @@ const Posts = () => {
   return <div className="Posts mt-5 w-full pb-15">
     {data.map((item) => {
       const postImage = item.post.image ? `${api_base_url}/uploads/${item.post.image}` : DEFAULT_POST_IMAGE;
-      const avatar = item.user.avatar || DEFAULT_AVATAR;
+      const avatar = getAvatarForUser(item.user, DEFAULT_AVATAR);
       return <article key={item.post._id} className="post mx-auto mb-5 max-w-2xl overflow-hidden rounded-2xl border border-[#27272a] bg-[#0d0d0d] pb-4">
         <div className="flex items-center justify-between px-4 py-3">
           <button type="button" className="flex items-center gap-2.5 text-left" onClick={() => navigate(`/profile/${item.user._id}`)}>
