@@ -16,14 +16,16 @@ const Search = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      const token = localStorage.getItem('token');
       const res = await fetch(api_base_url + '/getUsers', {
         mode: 'cors',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          token: localStorage.getItem('token'),
+          token,
         }),
       });
 
@@ -81,14 +83,16 @@ const Search = () => {
     );
 
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch(api_base_url + '/toggleFollow', {
         mode: 'cors',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          token: localStorage.getItem('token'),
+          token,
           userId,
         }),
       });

@@ -9,7 +9,7 @@ const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1500648767791-00dcc994
 const DEFAULT_POST_IMAGE = 'https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=1200&q=80';
 
 const Profile = () => {
-  let { id } = useParams();
+  const { id } = useParams();
 
   const [userDetails, setUserDetails] = useState(null);
   const [posts, setPosts] = useState([]);
@@ -17,15 +17,17 @@ const Profile = () => {
 
   const getUserDetails = useCallback(async () => {
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch(api_base_url + "/getUserDetails", {
         mode: "cors",
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           userId: id,
-          token: localStorage.getItem("token")
+          token,
         })
       });
 
@@ -43,15 +45,17 @@ const Profile = () => {
 
   const getMyPosts = useCallback(async () => {
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch(api_base_url + "/getMyPosts", {
         mode: "cors",
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           userId: id,
-          token: localStorage.getItem("token")
+          token,
         })
       });
 
@@ -68,15 +72,17 @@ const Profile = () => {
 
   const toggleFollow = async () => {
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch(api_base_url + "/toggleFollow", {
         mode: "cors",
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           userId: id,
-          token: localStorage.getItem("token")
+          token,
         })
       });
 
@@ -114,7 +120,7 @@ const Profile = () => {
         />
         <div className='min-w-0 flex-1'>
           <h3 className='break-all'>{userDetails ? userDetails.username : ""}</h3>
-          <p className='text-[14px] text-[gray]'>Join In {userDetails ? new Date(userDetails.date).toDateString() : ""}</p>
+          <p className='text-[14px] text-[gray]'>Joined on {userDetails ? new Date(userDetails.date).toDateString() : ""}</p>
           <p className='text-[14px] text-[gray]'><b>{userDetails ? userDetails.followers : ""}</b> Followers | <b>{userDetails ? userDetails.posts : ""}</b> Posts</p>
           {
             userDetails && userDetails.isThisYou === false ? (

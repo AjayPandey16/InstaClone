@@ -12,7 +12,7 @@ const SignUp = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const navigate = useNavigate();
 
-    const SubmitForm = async (e) => {
+    const submitForm = async (e) => {
         e.preventDefault();
         if (password.length < 6) {
             toast.error('Password must be at least 6 characters');
@@ -39,7 +39,7 @@ const SignUp = () => {
     return (
         <>
             <div className='w-full min-h-screen flex flex-col justify-center items-center bg-black gap-6 px-4'>
-                <form onSubmit={SubmitForm} className='flex w-full max-w-87.5 flex-col gap-4 bg-gray-900 p-6 rounded-lg shadow-lg'>
+                <form onSubmit={submitForm} className='flex w-full max-w-87.5 flex-col gap-4 bg-gray-900 p-6 rounded-lg shadow-lg'>
                     <img className='mx-auto w-37.5 object-cover' src={logo} alt='' />
 
                     <div className='inputBox'>
