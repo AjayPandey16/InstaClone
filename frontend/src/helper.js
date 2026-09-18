@@ -1,4 +1,4 @@
-export const api_base_url = "http://localhost:5000";
+export const api_base_url = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export const DEFAULT_AVATARS = [
   'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80',

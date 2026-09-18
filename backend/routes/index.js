@@ -200,7 +200,8 @@ router.post('/getUserDetails', requireAuth, async (req, res) => {
     const user = await User.findById(req.body.userId).select('-password');
     if (!user) return res.status(404).json({ success: false, msg: 'User not found' });
     const posts = await Post.find({ uploadedBy: user._id }).sort({ date: -1 });
-    return res.json({ success: true, data: { ...publicUser(user, req.userId), posts: posts.length, isThisYou: user._id.toString() === req.userId.toString() } });
+    const following = await User.countDocuments({ 'followers.userId': user._id });
+    return res.json({ success: true, data: { ...publicUser(user, req.userId), posts: posts.length, following, isThisYou: user._id.toString() === req.userId.toString() } });
   } catch (error) { return sendError(res, error); }
 });
 
